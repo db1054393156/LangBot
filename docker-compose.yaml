@@ -7,6 +7,9 @@ services:
     volumes:
       - ./data:/app/data
       - ./plugins:/app/plugins
+      - ./libs:/app/libs
+      - ./pkg:/app/pkg
+      - ./templates:/app/templates
     restart: on-failure
     environment:
       - TZ=Asia/Shanghai

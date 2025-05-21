@@ -27,6 +27,10 @@ stages:
             label:
               en_US: Dify Service API
               zh_Hans: Dify 服务 API
+          - name: dify-service-stream-api
+            label:
+              en_US: Dify Service stream API
+              zh_CN: Dify 服务 流式输出 API
           - name: dashscope-app-api
             label:
               en_US: Aliyun Dashscope App API
@@ -124,6 +128,86 @@ stages:
             label:
               en_US: Remove
               zh_Hans: 移除
+  - name: dify-service-stream-api
+    label:
+      en_US: Dify Service Stream API
+      zh_CN: Dify 服务 API
+    description:
+      en_US: Configure the Dify service Stream API of the pipeline
+      zh_CN: 配置 Dify 服务 流式 API
+    config:
+      - name: base-url
+        label:
+          en_US: Base URL
+          zh_CN: 基础 URL
+        type: string
+        required: true
+      - name: app-type
+        label:
+          en_US: App Type
+          zh_CN: 应用类型
+        type: select
+        required: true
+        default: chat
+        options:
+          - name: chat
+            label:
+              en_US: Chat
+              zh_CN: 聊天（包括Chatflow）
+          - name: agent
+            label:
+              en_US: Agent
+              zh_CN: Agent
+          - name: workflow
+            label:
+              en_US: Workflow
+              zh_CN: 工作流
+      - name: api-key
+        label:
+          en_US: API Key
+          zh_CN: API 密钥
+        type: string
+        required: true
+      - name: is-stream
+        label:
+          en_US: Whether to stream a reply
+          zh_CN: 是否流式调用回复
+        description:
+          en_US: Whether to stream the reply. If enabled, the content will be replied by streaming call. If not enabled, all content will be output at once.
+          zh_CN: 是否流式调用回复，如果开启会以流式调用的方式回复内容，不开启就是一次输出所有内容
+        type: boolean
+        required: true
+        default: false
+      - name: is-query
+        label:
+          en_US: query is required
+          zh_CN: 文字问题是否必须
+        description:
+          en_US: Is the text question necessary? If it is opened, text content must be entered
+          zh_CN: 文字问题是否必须,如果开启就必须要输入文字内容
+        type: boolean
+        required: true
+        default: true
+      - name: thinking-convert
+        label:
+          en_US: CoT Convert
+          zh_CN: 思维链转换策略
+        type: select
+        required: true
+        default: plain
+        options:
+          - name: plain
+            label:
+              en_US: Convert to <think>...</think>
+              zh_CN: 转换成 <think>...</think>
+          - name: original
+            label:
+              en_US: Original
+              zh_CN: 原始
+          - name: remove
+            label:
+              en_US: Remove
+              zh_CN: 移除
   - name: dashscope-app-api
     label:
       en_US: Aliyun Dashscope App API

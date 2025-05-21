@@ -50,6 +50,15 @@
             "thinking-convert": "plain",
             "timeout": 30
         },
+        "dify-service-stream-api": {
+            "base-url": "https://api.dify.ai/v1",
+            "app-type": "chat",
+            "api-key": "your-api-key",
+            "thinking-convert": "plain",
+            "timeout": 30,
+            "is-stream": false,
+            "is-query":true
+        },
         "dashscope-app-api": {
             "app-type": "agent",
             "api-key": "your-api-key",

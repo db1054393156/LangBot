@@ -155,6 +155,26 @@
             }
         }
     },
+    "dify-service-stream-api": {
+        "base-url": "https://api.dify.ai/v1",
+        "app-type": "chat",
+        "options": {
+            "convert-thinking-tips": "plain"
+        },
+        "chat": {
+            "api-key": "app-1234567890",
+            "timeout": 120
+        },
+        "agent": {
+            "api-key": "app-1234567890",
+            "timeout": 120
+        },
+        "workflow": {
+            "api-key": "app-1234567890",
+            "output-key": "summary",
+            "timeout": 120
+        }
+    },
     "mcp": {
         "servers": []
     }
