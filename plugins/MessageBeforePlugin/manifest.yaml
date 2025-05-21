@@ -1,0 +1,21 @@
+apiVersion: v1  # 不要改动
+kind: Plugin  # 不要改动
+metadata:
+  # author 和 name 唯一确定一个插件
+  author: DengBo  # 插件作者，修改为你的名称
+  name: MessageBeforePlugin  # 插件名称，修改为你的插件名称
+  repository: ''  # 插件仓库地址，修改为你的插件 GitHub 仓库地址
+  version: 0.0.1  # 插件版本，修改为你的插件版本
+  description:  # 插件简介，修改为你的插件简介，支持多语言
+    en_US: 飞书发送消息前的提示消息
+    zh_CN: 飞书发送消息前的提示消息
+  label:  # 插件显示名称，支持多语言。在 WebUI 上会显示对应语言的 label
+    en_US: MessageBeforePlugin
+    zh_CN: MessageBeforePlugin
+spec:
+  # 插件配置（可选），可配置多项
+  config:
+execution:
+  python:
+    path: main.py  # 插件主程序路径，必须与上方插件入口代码的文件名相同
+    attr: MessageBeforePlugin  # 插件类名，必须与上方代码中声明的类名相同
