@@ -83,7 +83,7 @@ class DifyServiceStreamAPIRunner(runner.RequestRunner):
         positions = []
         
         for match in re.finditer(image_pattern, text):
-            alt_text = match.group(1)  or "图片"  # 处理无alt情况
+            alt_text = match.group(1)  or ""  # 处理无alt情况
             img_url = match.group(2).strip()   # 去除URL两端空格
             
             if not self._is_valid_url(img_url):  # 跳过无效URL
@@ -160,7 +160,7 @@ class DifyServiceStreamAPIRunner(runner.RequestRunner):
 
         inputs.update(query.variables)
 
-        batch_size = 30  # 每批次更新的大小
+        batch_size = 10  # 每批次更新的大小
         accumulated_data = []  # 累积的数据
 
         chunk = None  # 初始化chunk变量，防止在没有响应时引用错误
@@ -181,47 +181,54 @@ class DifyServiceStreamAPIRunner(runner.RequestRunner):
                 if chunk['event'] == 'node_finished':
                     if chunk['data']['node_type'] == 'answer':
                         # 处理完整文本中的markdown图片
-                        final_answer = chunk['data']['outputs']['answer']
-                        full_pending_text = final_answer
-                        processed_text, images = self._extract_markdown_images(final_answer)
-                        
-                        if images:
-                            # 有图片，构建包含图片和文本的内容
-                            content_elements = []
-                            if processed_text.strip():
-                                content_elements.append(llm_entities.ContentElement.from_text(processed_text))
-                            
-                            for img in images:
-                                content_elements.append(llm_entities.ContentElement.from_image_url(img['url']))
-                            
-                            print('node_finished')
-                            print(content_elements)
-                            yield llm_entities.Message(
-                                role='assistant',
-                                content=content_elements,
-                            )
-                        else:
-                            # 没有图片，按原来的方式处理
-                            yield llm_entities.Message(
-                                role='assistant',
-                                content=self._try_convert_thinking(final_answer),
-                            )
+                        # final_answer = chunk['data']['outputs']['answer']
+                        # full_pending_text = final_answer
+                        # processed_text, images = self._extract_markdown_images(final_answer)
+                        #
+                        # if images:
+                        #     # 有图片，构建包含图片和文本的内容
+                        #     content_elements = []
+                        #     if processed_text.strip():
+                        #         content_elements.append(llm_entities.ContentElement.from_text(processed_text))
+                        #
+                        #     for img in images:
+                        #         content_elements.append(llm_entities.ContentElement.from_image_url(img['url']))
+                        #     yield llm_entities.Message(
+                        #         role='assistant',
+                        #         content=content_elements,
+                        #     )
+                        # else:
+                        #     # 没有图片，按原来的方式处理
+                        #     yield llm_entities.Message(
+                        #         role='assistant',
+                        #         content=self._try_convert_thinking(final_answer),
+                        #     )
+                        yield llm_entities.Message(
+                            role='assistant',
+                            content=self._try_convert_thinking(chunk['data']['outputs']['answer']),
+                        )
+                        yield llm_entities.Message(
+                            role='assistant',
+                            content="END-对话结束-END",
+                        )
                 elif chunk['event'] == 'message':
                     answer_text = chunk['answer']
                     full_pending_text += answer_text
-                    
+                    text_without_images += answer_text
                     # 处理当前chunk，提取并去除图片标记
-                    current_text_without_images, _ = self._extract_markdown_images(full_pending_text)
-                    text_without_images = current_text_without_images
+                    # current_text_without_images, _ = self._extract_markdown_images(full_pending_text)
+                    # text_without_images = current_text_without_images
                     
                     if self.pipeline_config['ai']['dify-service-stream-api']['is-stream']:
+
                         accumulated_data.append(answer_text)
-                        if len(accumulated_data) >= batch_size:
+                        # if len(accumulated_data) >= batch_size:
+                        if len(text_without_images) >= 20:
                             accumulated_data = []
                             # 流式输出中输出去掉图片的纯文本
                             yield llm_entities.Message(
                                 role='assistant',
-                                content=self._try_convert_thinking(text_without_images),
+                                content=self._try_convert_thinking(full_pending_text),
                             )
                             text_without_images = ''
             elif mode == 'basic':

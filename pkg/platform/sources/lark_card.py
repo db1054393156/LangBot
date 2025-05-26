@@ -11,6 +11,8 @@ import json
 import datetime
 import hashlib
 from Crypto.Cipher import AES
+import time
+import threading
 
 import aiohttp
 import lark_oapi.ws.exception
@@ -24,6 +26,58 @@ from ..types import events as platform_events
 from ..types import entities as platform_entities
 
 from ...core import app, entities as core_entities, taskmgr
+
+
+# 图片URL与image_key的缓存
+class ImageCache:
+    def __init__(self, cache_ttl=86400):  # 默认缓存一天
+        self.cache = {}  # {url: (image_key, timestamp)}
+        self.cache_ttl = cache_ttl
+        self.lock = threading.Lock()
+        # 启动自动清理线程
+        self._start_cleanup_timer()
+        
+    def get(self, url):
+        """获取缓存的image_key，如果不存在或已过期则返回None"""
+        with self.lock:
+            if url in self.cache:
+                image_key, timestamp = self.cache[url]
+                # 检查是否过期
+                if time.time() - timestamp < self.cache_ttl:
+                    return image_key
+                else:
+                    # 删除过期缓存
+                    del self.cache[url]
+            return None
+            
+    def set(self, url, image_key):
+        """设置缓存"""
+        with self.lock:
+            self.cache[url] = (image_key, time.time())
+            
+    def clear_expired(self):
+        """清理过期缓存"""
+        current_time = time.time()
+        with self.lock:
+            expired_urls = [url for url, (_, timestamp) in self.cache.items() 
+                           if current_time - timestamp >= self.cache_ttl]
+            for url in expired_urls:
+                del self.cache[url]
+                
+    def _start_cleanup_timer(self):
+        """启动定时清理任务"""
+        def cleanup_task():
+            while True:
+                # 每小时清理一次过期缓存
+                time.sleep(3600)
+                self.clear_expired()
+                
+        # 创建并启动后台线程执行清理任务
+        cleanup_thread = threading.Thread(target=cleanup_task, daemon=True)
+        cleanup_thread.start()
+
+# 创建全局缓存实例
+image_cache = ImageCache()
 
 
 class AESCipher(object):
@@ -76,7 +130,95 @@ class LarkCardMessageConverter(adapter.MessageConverter):
                 # Ensure text is valid UTF-8
                 try:
                     text = msg.text.encode('utf-8').decode('utf-8')
-                    pending_paragraph.append({'tag': 'markdown', 'content': text})
+                    
+                    # 处理Markdown格式的图片链接 ![alt](url)
+                    img_pattern = re.compile(r'!\[(.*?)\]\((.*?)\)')
+                    img_matches = list(img_pattern.finditer(text))
+
+                    # 如果没有图片，直接添加原始文本
+                    if not img_matches:
+                        pending_paragraph.append({'tag': 'markdown', 'content': text})
+                        continue
+                        
+                    # 处理包含图片的文本
+                    modified_text = text
+                    offset = 0  # 用于跟踪替换后文本长度变化
+                    
+                    for match in img_matches:
+                        img_alt = match.group(1)
+                        img_url = match.group(2)
+                        original_img_text = match.group(0)
+                        start_pos = match.start() + offset
+                        end_pos = match.end() + offset
+                        
+                        # 检查缓存中是否已存在该图片URL对应的image_key
+                        cached_image_key = image_cache.get(img_url)
+                        if cached_image_key:
+                            # 如果有缓存，直接使用缓存的image_key
+                            image_key = cached_image_key
+                            # 替换文本中的Markdown图片为飞书图片引用格式
+                            replacement = f"![{img_alt}]({image_key})"
+                            modified_text = modified_text[:start_pos] + replacement + modified_text[end_pos:]
+                            # 更新偏移量，考虑替换文本长度变化
+                            offset += len(replacement) - len(original_img_text)
+                            continue
+                        
+                        try:
+                            # 下载图片
+                            async with aiohttp.ClientSession() as session:
+                                async with session.get(img_url) as response:
+                                    if response.status == 200:
+                                        image_bytes = await response.read()
+                                    else:
+                                        continue
+                                        
+                            # 使用与Image类型相同的逻辑处理图片
+                            import tempfile
+                            with tempfile.NamedTemporaryFile(delete=False) as temp_file:
+                                temp_file.write(image_bytes)
+                                temp_file.flush()
+                                
+                                # 创建图片请求
+                                request = (
+                                    CreateImageRequest.builder()
+                                    .request_body(
+                                        CreateImageRequestBody.builder()
+                                        .image_type('message')
+                                        .image(open(temp_file.name, 'rb'))
+                                        .build()
+                                    )
+                                    .build()
+                                )
+                                
+                                response = await api_client.im.v1.image.acreate(request)
+                                
+                                if not response.success():
+                                    raise Exception(
+                                        f'client.im.v1.image.create failed, code: {response.code}, msg: {response.msg}, log_id: {response.get_log_id()}, resp: \n{json.dumps(json.loads(response.raw.content), indent=4, ensure_ascii=False)}'
+                                    )
+                                    
+                                image_key = response.data.image_key
+                                
+                                # 将图片URL和image_key添加到缓存
+                                image_cache.set(img_url, image_key)
+                                
+                                # 替换文本中的Markdown图片为飞书图片引用格式
+                                replacement = f"![{img_alt}]({image_key})"
+                                modified_text = modified_text[:start_pos] + replacement + modified_text[end_pos:]
+                                # 更新偏移量，考虑替换文本长度变化
+                                offset += len(replacement) - len(original_img_text)
+                                
+                        except Exception:
+                            traceback.print_exc()
+                        finally:
+                            # 清理临时文件
+                            import os
+                            if 'temp_file' in locals():
+                                os.unlink(temp_file.name)
+                    
+                    # 添加处理后的文本
+                    pending_paragraph.append({'tag': 'markdown', 'content': modified_text})
+                        
                 except UnicodeError:
                     # If text is not valid UTF-8, try to decode with other encodings
                     try:
@@ -162,6 +304,10 @@ class LarkCardMessageConverter(adapter.MessageConverter):
                                 {
                                     'tag': 'img',
                                     'img_key': image_key,
+                                    "alt": {
+                                        "tag": "plain_text",
+                                        "content": "图片"
+                                    }
                                 }
                             # ]
                         )
