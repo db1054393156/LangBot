@@ -49,13 +49,52 @@ class WeChatPadMessageConverter(adapter.MessageConverter):
         content_list = []
         current_file_path = os.path.abspath(__file__)
 
-
-
         for component in message_chain:
             if isinstance(component, platform_message.At):
                 content_list.append({"type": "at", "target": component.target})
             elif isinstance(component, platform_message.Plain):
-                content_list.append({"type": "text", "content": component.text})
+                # 检查文本中是否包含markdown格式的图片
+                text = component.text
+                # 使用正则表达式匹配markdown格式的图片 ![alt](url)
+                img_pattern = r'!\[.*?\]\((.*?)\)'
+                matches = re.finditer(img_pattern, text)
+                
+                last_end = 0
+                has_image = False
+                
+                for match in matches:
+                    has_image = True
+                    start, end = match.span()
+                    img_url = match.group(1)
+                    
+                    # 添加图片前的文本
+                    if start > last_end:
+                        content_list.append({"type": "text", "content": text[last_end:start]})
+                    
+                    # 添加图片
+                    try:
+                        async with httpx.AsyncClient() as client:
+                            response = await client.get(img_url)
+                            if response.status_code == 200:
+                                file_bytes = response.content
+                                base64_str = base64.b64encode(file_bytes).decode('utf-8')
+                                content_list.append({"type": "image", "image": base64_str})
+                            else:
+                                # 如果获取图片失败，保留原始markdown文本
+                                content_list.append({"type": "text", "content": text[start:end]})
+                    except Exception:
+                        # 处理异常情况，保留原始markdown文本
+                        content_list.append({"type": "text", "content": text[start:end]})
+                    
+                    last_end = end
+                
+                # 添加最后一个图片后的文本
+                if last_end < len(text):
+                    content_list.append({"type": "text", "content": text[last_end:]})
+                
+                # 如果没有图片，直接添加原文本
+                if not has_image:
+                    content_list.append({"type": "text", "content": text})
             elif isinstance(component, platform_message.Image):
                 if component.url:
                     async with httpx.AsyncClient() as client:
@@ -565,9 +604,7 @@ class WeChatPadAdapter(adapter.MessagePlatformAdapter):
     ):
         """统一消息处理核心逻辑"""
         content_list = await self.message_converter.yiri2target(message)
-        # print(content_list)
         at_targets = [item["target"] for item in content_list if item["type"] == "at"]
-        # print(at_targets)
         # 处理@逻辑
         at_targets = at_targets or []
         member_info = []
@@ -585,6 +622,8 @@ class WeChatPadAdapter(adapter.MessagePlatformAdapter):
                     if member["user_name"] in at_targets:
                         at_nick_name_list.append(f'@{member["nick_name"]}')
                 msg['content'] = f'{" ".join(at_nick_name_list)} {msg["content"]}'
+
+
 
             # 统一消息派发
             handler_map = {

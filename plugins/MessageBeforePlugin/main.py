@@ -164,7 +164,10 @@ class MessageBeforePlugin(BasePlugin):
 
                 except Exception as e:
                     print(f"更新卡片时发生异常: {str(e)}")
-        ctx.prevent_default()
+                ctx.prevent_default()
+        if response_text == "END-对话结束-END":
+            ctx.prevent_default()
+
 
     async def send_before_message(self, ctx: EventContext,message_type):
         message_event = ctx.event.query.message_event
